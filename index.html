@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webhook Inspector</title>
+<meta name="description" content="Local webhook receiver. Configure a fetch URL, send POSTs to it from anywhere on this origin, see them captured in real time. Browser-only.">
+<meta name="ai.description" content="Local webhook inspector. Registers a Service Worker that intercepts requests to a configured path, captures method/headers/body, and displays them in a live request log. Useful for testing webhook payloads from your own browser-side code or from local tools that can be pointed at a same-origin URL. NOT a replacement for ngrok or webhook.site, which are exposed to the public internet — this is purely local.">
+<style>
+:root{--bg:#e9eef2;--surface:#fff;--surface-2:#f1f5f9;--ink:#0f172a;--ink-soft:#475569;--rule:#cbd5e1;--rule-strong:#0f172a;--accent:#0e7490;--accent-soft:#cffafe;--mono:ui-monospace,"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;--sans:"Inter",ui-sans-serif,system-ui,-apple-system,sans-serif;--ok:#1f6f43;--ok-soft:#e3f2ea;--err:#b3261e;--err-soft:#fbe9e7;--warn:#a04500;--warn-soft:#faecd9}
+[data-theme="dark"]{--bg:#0f1419;--surface:#1c2530;--surface-2:#161e26;--ink:#e2e8f0;--ink-soft:#94a3b8;--rule:#2a3441;--rule-strong:#e2e8f0;--accent:#22d3ee;--accent-soft:#0c2c33;--ok:#7fc99c;--ok-soft:#1f3327;--err:#f08585;--err-soft:#3d2222;--warn:#e6a960;--warn-soft:#3d2f1c}
+[data-theme="dark"] button.primary, [data-theme="dark"] a.primary { color: var(--bg) !important; }
+[data-theme="dark"] button.primary, [data-theme="dark"] a.primary { border-color: var(--accent) !important; }
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+body{font-family:var(--sans);background:var(--bg);color:var(--ink);line-height:1.55;font-size:14px;min-height:100vh}
+.skip-link{position:absolute;left:-9999px;top:0;background:var(--accent);color:var(--surface);padding:.5rem 1rem;z-index:100;font-weight:600}
+.skip-link:focus{left:1rem;top:1rem}
+.layout{max-width:1200px;margin:0 auto;padding:2rem 1.25rem 4rem}
+header{display:grid;grid-template-columns:1fr auto;gap:1.5rem;align-items:end;padding-bottom:1.25rem;border-bottom:1px solid var(--rule-strong);margin-bottom:1.5rem}
+.brand{font-family:var(--mono);font-size:.6875rem;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:.5rem;font-weight:600}
+h1{font-size:clamp(1.625rem,4vw,2.375rem);font-weight:700;letter-spacing:-.02em;line-height:1.05}
+h1 .accent{color:var(--accent)}
+.subtitle{margin-top:.5rem;color:var(--ink-soft);font-size:.9375rem;max-width:560px}
+.theme-toggle{background:var(--surface);color:var(--ink);border:1px solid var(--rule-strong);border-radius:3px;padding:.5rem .75rem;font:inherit;font-size:.75rem;font-weight:600;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;display:inline-flex;align-items:center;gap:.4rem;flex-shrink:0}
+.theme-toggle:hover{background:var(--ink);color:var(--bg)}
+.theme-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.theme-toggle svg{width:14px;height:14px}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:1rem 1.25rem;margin-bottom:1rem}
+.panel-head{display:flex;align-items:baseline;gap:.625rem;margin-bottom:.625rem;padding-bottom:.4rem;border-bottom:1px solid var(--rule)}
+.panel-num{font-family:var(--mono);font-size:.6875rem;font-weight:700;color:var(--accent);letter-spacing:.08em}
+.panel-title{font-size:.8125rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+label{display:block;font-family:var(--mono);font-size:.6875rem;font-weight:700;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft)}
+input[type="text"],textarea,select{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--rule);border-radius:3px;padding:.55rem .7rem;font:inherit;font-family:var(--mono);font-size:.8125rem;line-height:1.5}
+textarea{resize:vertical;min-height:120px}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.625rem}
+button.primary,button.secondary,button.danger{font:inherit;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:.45rem .85rem;border-radius:3px;cursor:pointer}
+button.primary{background:var(--accent);color:var(--surface);border:1px solid var(--accent)}
+button.primary:hover:not(:disabled){filter:brightness(.92)}
+button.secondary{background:var(--surface);color:var(--ink);border:1px solid var(--rule-strong)}
+button.secondary:hover:not(:disabled){background:var(--ink);color:var(--bg)}
+button.danger{background:var(--surface);color:var(--err);border:1px solid var(--err)}
+button.danger:hover{background:var(--err);color:#fff}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.help{margin-top:.4rem;font-size:.75rem;color:var(--ink-soft);line-height:1.55}
+.help code{background:var(--surface-2);padding:.05rem .35rem;border-radius:2px;font-size:.8125rem}
+.url-display{background:var(--accent-soft);border:1px solid var(--accent);border-radius:3px;padding:.5rem .75rem;font-family:var(--mono);font-size:.8125rem;display:flex;align-items:center;gap:.5rem;justify-content:space-between;margin-top:.5rem}
+.url-display code{font-weight:600;color:var(--accent);word-break:break-all}
+.status{margin-top:.5rem;padding:.4rem .625rem;border-radius:3px;font-size:.75rem;font-family:var(--mono);border:1px solid var(--rule)}
+.status.ok{background:var(--ok-soft);color:var(--ok);border-color:var(--ok)}
+.status.warn{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+.status.err{background:var(--err-soft);color:var(--err);border-color:var(--err)}
+.req-list{display:flex;flex-direction:column;gap:.5rem}
+.req{background:var(--surface-2);border:1px solid var(--rule);border-radius:3px;padding:.625rem .75rem}
+.req-head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.4rem;cursor:pointer;user-select:none}
+.method{font-family:var(--mono);font-size:.6875rem;font-weight:700;text-transform:uppercase;padding:.15rem .4rem;border-radius:2px;color:#fff}
+.method.GET{background:#0e7490}.method.POST{background:var(--ok)}.method.PUT{background:var(--warn)}.method.DELETE{background:var(--err)}.method.PATCH{background:#7e22ce}
+.req-time{font-family:var(--mono);font-size:.6875rem;color:var(--ink-soft)}
+.req-path{font-family:var(--mono);font-size:.8125rem;font-weight:600;flex:1;word-break:break-all}
+.req-body{display:none;margin-top:.4rem;padding-top:.4rem;border-top:1px solid var(--rule)}
+.req.open .req-body{display:block}
+.req-section{margin-bottom:.4rem}
+.req-section-label{font-family:var(--mono);font-size:.6875rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-weight:700;margin-bottom:.2rem}
+.req-section pre{background:var(--bg);border:1px solid var(--rule);border-radius:2px;padding:.5rem .625rem;font-family:var(--mono);font-size:.75rem;white-space:pre-wrap;word-break:break-word;max-height:200px;overflow-y:auto}
+.empty{padding:1.5rem 1rem;text-align:center;color:var(--ink-soft);font-style:italic;font-size:.875rem;background:var(--surface-2);border:1px dashed var(--rule);border-radius:3px}
+.toolbar{display:flex;gap:.5rem;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:.75rem}
+.counter{font-family:var(--mono);font-size:.75rem;color:var(--ink-soft)}
+footer{margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid var(--rule);font-size:.75rem;color:var(--ink-soft);line-height:1.7}
+footer a{color:var(--ink-soft);text-decoration:underline;text-underline-offset:2px}
+footer a:hover{color:var(--accent)}
+@media(max-width:540px){.layout{padding:1.25rem 1rem 3rem}h1{font-size:1.375rem}header{grid-template-columns:1fr}}
+</style>
+</head>
+<body data-theme="light">
+<a href="#main" class="skip-link">Skip to main</a>
+<div class="layout">
+<header>
+<div>
+<div class="brand">WEBHOOK // INSPECTOR</div>
+<h1>Inspect webhooks. <span class="accent">Locally.</span></h1>
+<p class="subtitle">Register a Service Worker. Send any same-origin POST to the configured path. See it captured in real time.</p>
+</div>
+<button type="button" class="theme-toggle" id="theme-btn" aria-label="Toggle theme" aria-pressed="false">
+<svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+</svg>
+<span id="theme-label">Dark</span>
+</button>
+</header>
+<main id="main">
+<div class="panel">
+<div class="panel-head"><span class="panel-num">01</span><h2 class="panel-title">Configure</h2></div>
+<div class="row" style="margin:0;align-items:flex-end">
+<div style="flex:1;min-width:200px">
+<label for="path-input">Capture path</label>
+<input type="text" id="path-input" value="/inspect" autocomplete="off" spellcheck="false">
+</div>
+<div style="flex-shrink:0">
+<button type="button" class="primary" id="register-btn">Activate</button>
+<button type="button" class="secondary" id="unregister-btn" style="display:none">Deactivate</button>
+</div>
+</div>
+<p class="help">Once active, any same-origin request whose path begins with this prefix is intercepted, logged, and answered with <code>{"ok":true}</code>. Use methods POST, PUT, PATCH, GET, DELETE.</p>
+<div id="reg-status" role="status" aria-live="polite"></div>
+<div class="url-display" id="url-display" style="display:none">
+<code id="full-url"></code>
+<button type="button" class="secondary" id="copy-url-btn" style="font-size:.6875rem;padding:.3rem .5rem">Copy</button>
+</div>
+</div>
+<div class="panel">
+<div class="panel-head"><span class="panel-num">02</span><h2 class="panel-title">Try it</h2></div>
+<p class="help" style="margin-top:0;margin-bottom:.625rem">Send a request from this page to test:</p>
+<div class="row" style="margin:0">
+<select id="test-method" style="max-width:120px"><option>POST</option><option>GET</option><option>PUT</option><option>DELETE</option><option>PATCH</option></select>
+<button type="button" class="secondary" id="send-test-btn">Send test request</button>
+</div>
+<label for="test-body" style="margin-top:.625rem">Body (JSON)</label>
+<textarea id="test-body" spellcheck="false">{"event":"test","timestamp":"2026-01-01T00:00:00Z","data":{"id":42}}</textarea>
+</div>
+<div class="panel">
+<div class="panel-head"><span class="panel-num">03</span><h2 class="panel-title">Captured requests</h2></div>
+<div class="toolbar">
+<div class="counter" id="counter">0 captured</div>
+<div><button type="button" class="secondary" id="clear-btn">Clear</button></div>
+</div>
+<div id="req-list-container"><div class="empty">Activate the inspector and send a request to see it here.</div></div>
+</div>
+</main>
+<footer>
+<p>Source: <a href="https://github.com/0xelitesystem/webhook-inspector" target="_blank" rel="noopener">github.com/0xelitesystem/webhook-inspector</a></p>
+<p>Related: <a href="https://github.com/0xelitesystem/csp-builder" target="_blank" rel="noopener">csp-builder</a> &middot; <a href="https://github.com/0xelitesystem/byok-patterns" target="_blank" rel="noopener">byok-patterns</a></p>
+<p>Limitations: only intercepts <em>same-origin</em> requests. Cannot receive webhooks from external services like Stripe or GitHub. For public internet-facing webhook capture use ngrok or webhook.site. This tool is for local testing of your own browser-side or same-origin code.</p>
+</footer>
+</div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+let captured=[];
+let registration=null;
+const channel=new BroadcastChannel("webhook-inspector");
+
+function setStatus(kind,msg){
+  if(!kind){$("reg-status").innerHTML="";return}
+  $("reg-status").innerHTML=`<div class="status ${escapeHtml(kind)}">${escapeHtml(msg)}</div>`;
+}
+
+// Build the inline service worker script as a Blob URL
+const SW_SOURCE=`
+let capturePath="/inspect";
+const ch=new BroadcastChannel("webhook-inspector");
+
+self.addEventListener("install",e=>{self.skipWaiting()});
+self.addEventListener("activate",e=>{e.waitUntil(self.clients.claim())});
+
+self.addEventListener("message",e=>{
+  if(e.data&&e.data.type==="setPath"&&typeof e.data.path==="string"){
+    capturePath=e.data.path;
+  }
+});
+
+self.addEventListener("fetch",e=>{
+  const url=new URL(e.request.url);
+  if(url.origin!==self.location.origin)return;
+  if(!url.pathname.startsWith(capturePath))return;
+  e.respondWith((async()=>{
+    const req=e.request.clone();
+    const headers={};
+    for(const[k,v]of req.headers)headers[k]=v;
+    let body="";
+    try{body=await req.text()}catch{}
+    ch.postMessage({
+      type:"capture",
+      method:req.method,
+      url:e.request.url,
+      pathname:url.pathname,
+      search:url.search,
+      headers,
+      body,
+      time:Date.now()
+    });
+    return new Response(JSON.stringify({ok:true,captured:true}),{
+      status:200,
+      headers:{"Content-Type":"application/json"}
+    });
+  })());
+});
+`;
+
+async function register(){
+  if(!("serviceWorker"in navigator)){setStatus("err","Service Workers not supported in this browser");return}
+  const path=$("path-input").value.trim()||"/inspect";
+  if(!path.startsWith("/")){setStatus("err","Path must start with /");return}
+  try{
+    const blob=new Blob([SW_SOURCE],{type:"application/javascript"});
+    const swUrl=URL.createObjectURL(blob);
+    registration=await navigator.serviceWorker.register(swUrl,{scope:"./"});
+    await navigator.serviceWorker.ready;
+    if(navigator.serviceWorker.controller){
+      navigator.serviceWorker.controller.postMessage({type:"setPath",path});
+    }
+    setStatus("ok","Active. Capture path: "+path);
+    $("register-btn").style.display="none";
+    $("unregister-btn").style.display="inline-flex";
+    $("path-input").disabled=true;
+    const fullUrl=window.location.origin+path;
+    $("full-url").textContent=fullUrl;
+    $("url-display").style.display="flex";
+  }catch(err){
+    setStatus("err","Failed to register: "+err.message);
+  }
+}
+
+async function unregister(){
+  try{
+    if(registration){await registration.unregister()}
+    const regs=await navigator.serviceWorker.getRegistrations();
+    for(const r of regs)await r.unregister();
+    setStatus("warn","Inactive. Refresh page if requests still get intercepted.");
+    $("register-btn").style.display="inline-flex";
+    $("unregister-btn").style.display="none";
+    $("path-input").disabled=false;
+    $("url-display").style.display="none";
+  }catch(err){
+    setStatus("err","Unregister failed: "+err.message);
+  }
+}
+
+channel.addEventListener("message",e=>{
+  if(e.data&&e.data.type==="capture"){
+    captured.unshift(e.data);
+    if(captured.length>200)captured=captured.slice(0,200);
+    render();
+  }
+});
+
+function formatBody(body,headers){
+  if(!body)return"(empty)";
+  const ct=(headers["content-type"]||headers["Content-Type"]||"").toLowerCase();
+  if(ct.includes("json")){
+    try{return JSON.stringify(JSON.parse(body),null,2)}catch{return body}
+  }
+  return body;
+}
+
+function render(){
+  const c=$("req-list-container");
+  $("counter").textContent=captured.length+" captured";
+  if(captured.length===0){
+    c.innerHTML='<div class="empty">No requests yet. Activate the inspector and send a request.</div>';
+    return;
+  }
+  let html='<div class="req-list">';
+  captured.forEach((r,idx)=>{
+    const time=new Date(r.time).toLocaleTimeString();
+    const headerLines=Object.entries(r.headers).map(([k,v])=>`${k}: ${v}`).join("\n");
+    html+=`<div class="req" data-idx="${idx}">
+      <div class="req-head">
+        <span class="method ${escapeHtml(r.method)}">${escapeHtml(r.method)}</span>
+        <span class="req-path">${escapeHtml(r.pathname+r.search)}</span>
+        <span class="req-time">${escapeHtml(time)}</span>
+      </div>
+      <div class="req-body">
+        <div class="req-section">
+          <div class="req-section-label">Headers</div>
+          <pre>${escapeHtml(headerLines||"(none)")}</pre>
+        </div>
+        <div class="req-section">
+          <div class="req-section-label">Body</div>
+          <pre>${escapeHtml(formatBody(r.body,r.headers))}</pre>
+        </div>
+      </div>
+    </div>`;
+  });
+  html+="</div>";
+  c.innerHTML=html;
+  document.querySelectorAll(".req-head").forEach(h=>{
+    h.addEventListener("click",()=>h.parentElement.classList.toggle("open"));
+  });
+}
+
+$("register-btn").addEventListener("click",register);
+$("unregister-btn").addEventListener("click",unregister);
+
+$("clear-btn").addEventListener("click",()=>{captured=[];render()});
+
+$("send-test-btn").addEventListener("click",async()=>{
+  const path=$("path-input").value.trim()||"/inspect";
+  const method=$("test-method").value;
+  const body=$("test-body").value;
+  const opts={method,headers:{"Content-Type":"application/json","X-Sent-From":"webhook-inspector-demo"}};
+  if(method!=="GET"&&method!=="HEAD")opts.body=body;
+  try{
+    const r=await fetch(path,opts);
+    if(r.ok){setStatus("ok","Test request sent. Check captured requests below.")}
+    else{setStatus("warn","Request returned "+r.status+". Make sure the inspector is active.")}
+  }catch(e){
+    setStatus("err","Request failed: "+e.message);
+  }
+});
+
+$("copy-url-btn").addEventListener("click",async()=>{
+  try{await navigator.clipboard.writeText($("full-url").textContent)}catch{}
+});
+
+function applyTheme(t){
+  document.body.dataset.theme=t;
+  $("theme-label").textContent=t==="dark"?"Light":"Dark";
+  $("theme-btn").setAttribute("aria-pressed",String(t==="dark"));
+  const icon=$("theme-icon");
+  if(t==="dark")icon.innerHTML='<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+  else icon.innerHTML='<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>';
+}
+$("theme-btn").addEventListener("click",()=>applyTheme(document.body.dataset.theme==="dark"?"light":"dark"));
+if(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)applyTheme("dark");
+</script>
+</body>
+</html>

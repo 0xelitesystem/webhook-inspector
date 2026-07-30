@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Webhook Inspector</title>
+<meta property="og:title" content="Webhook Inspector">
+<meta property="og:description" content="webhook-inspector">
+<meta property="og:url" content="https://0xelitesystem.github.io/webhook-inspector/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
 <meta name="description" content="Local webhook receiver. Configure a fetch URL, send POSTs to it from anywhere on this origin, see them captured in real time. Browser-only.">
 <meta name="ai.description" content="Local webhook inspector. Registers a Service Worker that intercepts requests to a configured path, captures method/headers/body, and displays them in a live request log. Useful for testing webhook payloads from your own browser-side code or from local tools that can be pointed at a same-origin URL. NOT a replacement for ngrok or webhook.site, which are exposed to the public internet, this is purely local.">
 <style>
@@ -318,6 +323,45 @@ function applyTheme(t){
 }
 $("theme-btn").addEventListener("click",()=>applyTheme(document.body.dataset.theme==="dark"?"light":"dark"));
 if(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)applyTheme("dark");
+</script>
+<script>
+/* Remember the light or dark choice across visits. */
+(function () {
+  var KEY = "theme";
+  var btn = document.querySelector("#theme-toggle, #theme-btn, .theme-btn, .theme-toggle, [data-theme-toggle]");
+  function host() {
+    if (document.documentElement.hasAttribute("data-theme")) { return document.documentElement; }
+    if (document.body && document.body.hasAttribute("data-theme")) { return document.body; }
+    return document.documentElement;
+  }
+  function current() { return host().getAttribute("data-theme") || ""; }
+  function setter() {
+    if (typeof setTheme === "function") { return setTheme; }
+    if (typeof applyTheme === "function") { return applyTheme; }
+    return null;
+  }
+  function force(t) {
+    var fn = setter();
+    if (fn) { fn(t); return; }
+    host().setAttribute("data-theme", t);
+    var other = t === "dark" ? "Light" : "Dark";
+    var lbl = document.querySelector("#theme-label");
+    if (lbl && (lbl.textContent === "Dark" || lbl.textContent === "Light")) { lbl.textContent = other; }
+    else if (btn && (btn.textContent === "Dark" || btn.textContent === "Light")) { btn.textContent = other; }
+    if (btn && btn.hasAttribute("aria-pressed")) { btn.setAttribute("aria-pressed", String(t === "dark")); }
+  }
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  if ((saved === "dark" || saved === "light") && saved !== current()) { force(saved); }
+  if (btn) {
+    btn.addEventListener("click", function () {
+      setTimeout(function () {
+        var t = current();
+        try { if (t) { localStorage.setItem(KEY, t); } } catch (e) {}
+      }, 0);
+    });
+  }
+})();
 </script>
 </body>
 </html>

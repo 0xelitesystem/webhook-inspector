@@ -153,7 +153,7 @@ footer a:hover{color:var(--accent)}
 <div class="panel-head"><span class="panel-num">02</span><h2 class="panel-title">Try it</h2></div>
 <p class="help" style="margin-top:0;margin-bottom:.625rem">Send a request from this page to test:</p>
 <div class="row" style="margin:0">
-<select id="test-method" style="max-width:120px"><option>POST</option><option>GET</option><option>PUT</option><option>DELETE</option><option>PATCH</option></select>
+<select id="test-method" style="max-width:120px" aria-label="Test request method"><option>POST</option><option>GET</option><option>PUT</option><option>DELETE</option><option>PATCH</option></select>
 <button type="button" class="secondary" id="send-test-btn">Send test request</button>
 </div>
 <label for="test-body" style="margin-top:.625rem">Body (JSON)</label>
@@ -362,11 +362,8 @@ if(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)
 (function () {
   var KEY = "theme";
   var btn = document.querySelector("#theme-toggle, #theme-btn, .theme-btn, .theme-toggle, [data-theme-toggle]");
-  function host() {
-    if (document.documentElement.hasAttribute("data-theme")) { return document.documentElement; }
-    if (document.body && document.body.hasAttribute("data-theme")) { return document.body; }
-    return document.documentElement;
-  }
+  // This page's own toggle switches <body> while <html> keeps a fixed brand theme, so remember <body>.
+  function host() { return document.body || document.documentElement; }
   function current() { return host().getAttribute("data-theme") || ""; }
   function setter() {
     if (typeof setTheme === "function") { return setTheme; }

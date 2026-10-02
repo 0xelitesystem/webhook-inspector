@@ -12,7 +12,7 @@ Local webhook inspector. Registers a Service Worker that intercepts requests to 
 
 So this is for testing your own browser-side fetch code, or for piping local CLI tools at a same-origin URL during dev.
 
-## Use it
+## Use
 
 Open `index.html` in a browser, or visit the hosted demo at `https://0xelitesystem.github.io/webhook-inspector/` once Pages is enabled.
 
@@ -20,6 +20,28 @@ Open `index.html` in a browser, or visit the hosted demo at `https://0xelitesyst
 2. Click Activate. The Service Worker registers and starts intercepting.
 3. Send any request to that path. Use the built-in test sender, your own JS code, curl, or any same-origin source.
 4. Watch captured requests appear in the list. Click to expand and see headers and body.
+
+## Why this exists
+
+Testing the request shape your own browser code sends usually means standing up a throwaway backend just to log what arrives. This does it with a Service Worker inside one HTML file instead: no server, no account, no tracking, no dependencies. MIT licensed.
+
+## Privacy
+
+Captured requests (method, URL, headers, body) are passed from the Service Worker to the page over a `BroadcastChannel` and held in memory only. They are never written to storage and never sent anywhere; closing or refreshing the tab drops them. The page makes one kind of network call: the built-in test sender runs `fetch` against the capture path you set, on the same origin as the page. While the inspector is active the Service Worker answers that request itself; if it is not active, the request goes to whatever server hosts the page (GitHub Pages for the live demo) like any normal page request. The only thing saved to `localStorage` is your light or dark theme choice, under the key `theme`.
+
+## Run locally
+
+```
+git clone https://github.com/0xelitesystem/webhook-inspector
+cd webhook-inspector
+python -m http.server 8000
+```
+
+Then visit `http://localhost:8000`. Service Workers need HTTPS or localhost, so serve it this way rather than opening `index.html` from disk.
+
+## Build
+
+No build step. One HTML file.
 
 ## How it works
 
